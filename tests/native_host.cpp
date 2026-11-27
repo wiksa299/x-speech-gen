@@ -267,7 +267,10 @@ int main(int argc, char** argv) {
     if (argc == 6) fs::copy(argv[5], root / "locales", fs::copy_options::recursive);
     fs::create_directories(root / "bin");
     fs::create_symlink(fs::absolute(argv[3]), root / "bin/xsg-engine");
-    std::ofstream(root / "X-Speech-Gen.json") << R"({"radio_profile":"faa"})";
+    std::ofstream(root / "X-Speech-Gen.json") << R"({
+        "radio_profile": "faa", "model_load": "first_use",
+        "model_unload": "inactivity", "model_idle_minutes": 12
+    })";
     setenv("XSG_MODEL_ROOT", argv[4], 1);
     load(1, argv[1], root / "64/lin.xpl");
     load(2, argv[2], root / "diagnostic/64/lin.xpl");

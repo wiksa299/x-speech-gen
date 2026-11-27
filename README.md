@@ -2,7 +2,7 @@
 
 X-Speech Gen is a local text-to-speech provider for X-Plane 12.4.4 and later. Other plugins can use it for announcements, copilot replies, and spoken checklists. Gradium Phonon runs on the CPU. Complete packages include the models and voices for offline use.
 
-Version **0.1.0-beta.4** targets testing in X-Plane on Windows x64 (x86-64-v3). It includes the English, French, and Spanish interface catalogs, a configurable models folder, and an Activity tab for client requests. The complete beta package includes the three Q8 Phonon models and their voice catalog. In-simulator validation is pending. The planned platforms for the stable release are Windows and Linux with an x86-64-v3 CPU, and macOS 15 or later on Apple Silicon and Intel.
+Version **0.1.0-beta.5** targets testing in X-Plane on Windows x64 (x86-64-v3). It includes the English, French, and Spanish interface catalogs, a configurable models folder, and an Activity tab for client requests. Beta 5 fixes reloading saved preferences when model loading and unloading settings are present. The complete beta package includes the three Q8 Phonon models and their voice catalog. In-simulator validation is pending. The planned platforms for the stable release are Windows and Linux with an x86-64-v3 CPU, and macOS 15 or later on Apple Silicon and Intel.
 
 GitHub Actions produces build artifacts for the plugins and helper. Use the [packaging steps](#package-a-build) to assemble a complete offline ZIP with the models and voices.
 

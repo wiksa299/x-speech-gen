@@ -340,7 +340,16 @@ fn read_profile(path: &Path) -> Option<Value> {
     }
     let value: Value = serde_json::from_reader(fs::File::open(path).ok()?).ok()?;
     let mut options = value.clone();
-    options.as_object_mut()?.remove("model_root");
+    let generation = options.as_object_mut()?;
+    // Provider settings are saved alongside the synthesis defaults.
+    for key in [
+        "model_root",
+        "model_load",
+        "model_unload",
+        "model_idle_minutes",
+    ] {
+        generation.remove(key);
+    }
     serde_json::from_value::<Options>(options)
         .ok()
         .map(|_| value)

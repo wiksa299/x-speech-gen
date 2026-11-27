@@ -45,7 +45,8 @@ void test_models_folder(const fs::path& engine, const fs::path& model_assets) {
         const auto previous = service.catalog_revision();
         change(ModelsAction::Rescan);
         require(service.catalog_revision() > previous, "Rescan did not refresh the catalog");
-        service.save_profile({{"radio_profile","faa"}});
+        service.save_profile({{"radio_profile","faa"}, {"model_load","activation"},
+                              {"model_unload","inactivity"}, {"model_idle_minutes",12}});
         wait_for([&] {
             std::ifstream file(preferences);
             const auto saved = Json::parse(file, nullptr, false);
@@ -74,13 +75,18 @@ void test_models_folder(const fs::path& engine, const fs::path& model_assets) {
             }
             return previewed;
         }, "No response from the new models folder");
-        require(service.profile().value("radio_profile", "") == "sera", "Worker did not reload preferences on wake");
+        const auto restored = service.profile();
+        require(restored.value("radio_profile", "") == "sera", "Worker did not reload preferences on wake");
+        require(restored.value("model_load", "") == "activation" &&
+            restored.value("model_unload", "") == "inactivity" &&
+            restored.value("model_idle_minutes", 0) == 12, "Worker lost model lifecycle preferences on wake");
         require(service.catalog_revision() == revision_before_sleep, "Wake needlessly invalidated the cached catalog");
     }
     {
         Service service(engine, scratch, preferences);
         wait_for([&] { return service.ready(); }, "Folder fixture did not restart");
         require(service.models_folder().path == model_assets.u8string(), "Models folder lost after restart");
+        require(service.profile().value("model_idle_minutes", 0) == 12, "Idle delay lost after restart");
         require(service.configure_models(ModelsAction::Default) == XSG_OK, "Default folder rejected");
         wait_for([&] { return !service.models_folder().pending; }, "Default folder reset did not finish");
         require(service.models_folder().path == scratch.u8string(), "Wrong reset folder");
