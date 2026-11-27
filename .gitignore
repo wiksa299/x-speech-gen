@@ -1,0 +1,26 @@
+# Documentation de travail et configuration locale
+*.md
+!/README.md
+/docs/
+/mockup-*.html
+
+# Configuration et identifiants locaux
+/.agents/
+/.codex/
+/.aws/
+/.ssh/
+/.env
+/.env.*
+
+# Builds, archives de livraison et modèles téléchargés
+/build/
+/target/
+/dist/
+/models/
+*.gguf
+*.safetensors
+*.part
+__pycache__/
+
+# Conserver le verrou de dépendances de l’exécutable.
+!/Cargo.lock

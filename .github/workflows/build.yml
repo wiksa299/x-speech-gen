@@ -1,0 +1,57 @@
+name: Build and test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            name: linux-x86-64
+            rustflags: "-C target-cpu=x86-64-v3"
+          - runner: windows-2022
+            name: windows-x86-64
+            rustflags: "-C target-cpu=x86-64-v3 -C target-feature=+crt-static"
+          - runner: macos-15
+            name: macos-arm64
+            rustflags: ""
+          - runner: macos-15-intel
+            name: macos-x86-64
+            rustflags: "-C target-cpu=x86-64-v3"
+    runs-on: ${{ matrix.runner }}
+    env:
+      RUSTFLAGS: ${{ matrix.rustflags }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Rust toolchain
+        run: rustup default 1.95
+      - name: Rust tests
+        run: cargo test --locked
+      - name: Fetch the public English model for integration tests
+        if: runner.os == 'Linux'
+        run: python3 packaging/assets.py build/test-models --model phonon-31m-en --fetch
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release "-DXSG_TEST_MODELS=${{ runner.os == 'Linux' && format('{0}/build/test-models', github.workspace) || '' }}"
+      - name: Build
+        run: cmake --build build --config Release --parallel
+      - name: CTest
+        run: ctest --test-dir build -C Release --output-on-failure -E model-matrix
+      - name: Stage binaries
+        run: cmake --install build --config Release --prefix build/stage
+      - name: Gather dependency notices
+        run: python packaging/rust_notices.py build/stage/licenses/rust
+      - name: Archive binaries and preserve executable metadata
+        working-directory: build/stage
+        run: cmake -E tar cf ../binaries.zip --format=zip .
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: x-speech-gen-tools-${{ matrix.name }}
+          path: build/binaries.zip

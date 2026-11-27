@@ -1,0 +1,4 @@
+#pragma once
+namespace xsg {
+constexpr char english_json[] = R"xsg_json(@XSG_ENGLISH_JSON@)xsg_json";
+}

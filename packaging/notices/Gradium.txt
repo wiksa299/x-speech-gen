@@ -1,0 +1,21 @@
+Phonon runtime and models by Gradium.
+Runtime v0.7.1: https://github.com/gradium-ai/xn-ptts/tree/v0.7.1
+Runtime license: MIT OR Apache-2.0.
+
+Phonon 31M English model, tokenizer and original voice: Apache-2.0.
+https://huggingface.co/gradium/phonon-31m-en
+
+Phonon 40M English and 40M multilingual models, tokenizers, and original voices:
+Creative Commons Attribution-NonCommercial 4.0 International.
+https://huggingface.co/gradium/phonon-40m-en
+https://huggingface.co/gradium/phonon-40m-multilingual
+https://creativecommons.org/licenses/by-nc/4.0/
+
+Shared Phonon voice catalog: Apache-2.0.
+https://huggingface.co/gradium/phonon-voices
+
+X-Speech Gen redistributes the upstream files without modification.
+See X-Speech-Gen/asset-manifest.json for exact sources and checksums.
+
+Source code in the provider and the preparation stage includes adaptations
+from X-Speech Rekon and Saywell, both MIT, copyright 2026 wiksa.

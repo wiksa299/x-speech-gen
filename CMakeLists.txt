@@ -1,0 +1,133 @@
+cmake_minimum_required(VERSION 3.24)
+set(CMAKE_OSX_DEPLOYMENT_TARGET 15.0 CACHE STRING "Minimum macOS version")
+project(XSpeechGen VERSION 0.1.0 LANGUAGES C CXX)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+
+option(XSG_BUILD_PLUGINS "Build the X-Plane provider and diagnostic client" ON)
+option(XSG_BUILD_ENGINE "Build the Rust engine with Cargo" ON)
+set(XSG_TEST_MODELS "" CACHE PATH "Local folder containing models/ and voices.jsonl for integration tests")
+set(XSG_RUST_TARGET "" CACHE STRING "Override Cargo's host target")
+set(XSG_ENGINE_PATH "" CACHE FILEPATH "Use an existing engine executable instead of building it")
+
+include(CTest)
+include(FetchContent)
+find_package(Threads REQUIRED)
+FetchContent_Declare(json URL https://codeload.github.com/nlohmann/json/tar.gz/55f93686c01528224f448c19128836e7df245f72
+        URL_HASH SHA256=67f4cdd9ca930c9c1e130af4a437c7fc98fab77a2846fc2d2a14b4943831f8ef SOURCE_SUBDIR xsg-header-only)
+FetchContent_MakeAvailable(json)
+
+add_library(xsg-service STATIC src/process.cpp src/service.cpp)
+target_include_directories(xsg-service PUBLIC include src "${json_SOURCE_DIR}/include")
+target_link_libraries(xsg-service PUBLIC Threads::Threads)
+if(WIN32)
+    target_compile_definitions(xsg-service PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
+
+if(XSG_ENGINE_PATH)
+    set(engine "${XSG_ENGINE_PATH}")
+    install(PROGRAMS "${engine}" DESTINATION X-Speech-Gen/bin)
+elseif(XSG_BUILD_ENGINE)
+    find_program(XSG_CARGO cargo REQUIRED)
+    set(cargo_target_arg)
+    set(cargo_target_path)
+    if(XSG_RUST_TARGET)
+        set(cargo_target_arg --target "${XSG_RUST_TARGET}")
+        set(cargo_target_path "${XSG_RUST_TARGET}/")
+    endif()
+    set(engine "${CMAKE_CURRENT_BINARY_DIR}/cargo/${cargo_target_path}release/xsg-engine${CMAKE_EXECUTABLE_SUFFIX}")
+    add_custom_target(xsg-engine ALL
+        COMMAND "${CMAKE_COMMAND}" -E env "MACOSX_DEPLOYMENT_TARGET=15.0"
+            "${XSG_CARGO}" build --locked --release --target-dir "${CMAKE_CURRENT_BINARY_DIR}/cargo" ${cargo_target_arg}
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        BYPRODUCTS "${engine}"
+        VERBATIM)
+    install(PROGRAMS "${engine}" DESTINATION X-Speech-Gen/bin)
+endif()
+
+if(XSG_BUILD_PLUGINS)
+    FetchContent_Declare(xpsdk URL https://codeload.github.com/X-Plane/xpsdk/tar.gz/ed88aed734106466436ba9efd9a87332fbd9808e
+        URL_HASH SHA256=a1b2f47fdf2ec6dc5f5feac8988093fda7ada58ab00b7c33cfa16cd4b6602401 SOURCE_SUBDIR xsg-header-only)
+    FetchContent_Declare(imgui URL https://codeload.github.com/ocornut/imgui/tar.gz/f5befd2d29e66809cd1110a152e375a7f1981f06
+        URL_HASH SHA256=85f4ce357df05bcc331b587f01976f47fb55f19fadf477a7907289686bc3f4c8 SOURCE_SUBDIR xsg-header-only)
+    FetchContent_Declare(miniaudio URL https://codeload.github.com/mackron/miniaudio/tar.gz/877ea4a7c2601c7b0f2a44e83dfac42e6470fea6
+        URL_HASH SHA256=b142cefa199ec27cfe77c5da7514d4a82fdc208444dd0abef947efeada14b60d SOURCE_SUBDIR xsg-header-only)
+    FetchContent_MakeAvailable(xpsdk imgui miniaudio)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS locales/en.json)
+    file(READ "${CMAKE_CURRENT_SOURCE_DIR}/locales/en.json" XSG_ENGLISH_JSON)
+    configure_file(src/english.hpp.in generated/english.hpp @ONLY)
+    add_library(xsg-ui STATIC src/locale.cpp src/window.cpp src/player.cpp
+        "${imgui_SOURCE_DIR}/imgui.cpp" "${imgui_SOURCE_DIR}/imgui_draw.cpp"
+        "${imgui_SOURCE_DIR}/imgui_widgets.cpp" "${imgui_SOURCE_DIR}/imgui_tables.cpp"
+        "${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp")
+    target_include_directories(xsg-ui PUBLIC include src "${xpsdk_SOURCE_DIR}/CHeaders/XPLM" "${imgui_SOURCE_DIR}"
+        PRIVATE "${miniaudio_SOURCE_DIR}" "${json_SOURCE_DIR}/include" "${CMAKE_CURRENT_BINARY_DIR}/generated")
+    target_compile_definitions(xsg-ui PUBLIC
+        XPLM200=1 XPLM210=1 XPLM300=1 XPLM301=1 XPLM303=1 XPLM400=1 XPLM411=1 XPLM420=1 XPLM430=1 XPLM440=1)
+    target_link_libraries(xsg-ui PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
+    if(WIN32)
+        set(plugin_name win)
+        target_compile_options(xsg-ui PUBLIC $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+        target_compile_definitions(xsg-ui PUBLIC IBM=1 NOMINMAX WIN32_LEAN_AND_MEAN)
+        target_link_libraries(xsg-ui PUBLIC "${xpsdk_SOURCE_DIR}/Libraries/Win/XPLM_64.lib")
+    elseif(APPLE)
+        set(plugin_name mac)
+        target_compile_definitions(xsg-ui PUBLIC APL=1)
+        find_library(CORE_AUDIO CoreAudio REQUIRED)
+        find_library(AUDIO_TOOLBOX AudioToolbox REQUIRED)
+        find_library(CORE_FOUNDATION CoreFoundation REQUIRED)
+        target_link_libraries(xsg-ui PUBLIC "${CORE_AUDIO}" "${AUDIO_TOOLBOX}" "${CORE_FOUNDATION}")
+        target_link_libraries(xsg-ui PUBLIC "${xpsdk_SOURCE_DIR}/Libraries/Mac/XPLM.framework")
+        set(CMAKE_SKIP_RPATH ON)
+    else()
+        set(plugin_name lin)
+        target_compile_definitions(xsg-ui PUBLIC LIN=1)
+    endif()
+    foreach(part IN ITEMS provider diagnostic)
+        add_library(xsg-${part} MODULE src/${part}.cpp)
+        target_link_libraries(xsg-${part} PRIVATE xsg-ui)
+        set_target_properties(xsg-${part} PROPERTIES PREFIX "" SUFFIX ".xpl" OUTPUT_NAME "${plugin_name}"
+            LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/plugins/${part}"
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/plugins/${part}")
+    endforeach()
+    target_link_libraries(xsg-provider PRIVATE xsg-service)
+    install(TARGETS xsg-provider LIBRARY DESTINATION X-Speech-Gen/64 RUNTIME DESTINATION X-Speech-Gen/64)
+    install(TARGETS xsg-diagnostic LIBRARY DESTINATION X-Speech-Gen-Diagnostic/64 RUNTIME DESTINATION X-Speech-Gen-Diagnostic/64)
+    install(DIRECTORY locales DESTINATION X-Speech-Gen FILES_MATCHING PATTERN "*.json")
+    install(FILES assets/NotoSans-Regular.ttf DESTINATION X-Speech-Gen)
+    install(FILES assets/NotoSans-OFL.txt DESTINATION licenses)
+    install(FILES "${imgui_SOURCE_DIR}/LICENSE.txt" DESTINATION licenses RENAME dear-imgui.txt)
+    install(FILES "${miniaudio_SOURCE_DIR}/LICENSE" DESTINATION licenses RENAME miniaudio.txt)
+endif()
+
+install(FILES "${json_SOURCE_DIR}/LICENSE.MIT" DESTINATION licenses RENAME nlohmann-json.txt)
+install(FILES include/xspeech_gen.h LICENSE README.md DESTINATION .)
+install(FILES include/xspeech_gen.h DESTINATION include)
+if(BUILD_TESTING AND engine)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME localization-catalogs COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/locales.py" "${CMAKE_CURRENT_SOURCE_DIR}/locales")
+    add_test(NAME engine-preparation COMMAND "${engine}" prepare en "runway {runway:09L}, flight level {flight_level:100}")
+    set_tests_properties(engine-preparation PROPERTIES PASS_REGULAR_EXPRESSION "runway zero niner left, flight level one hundred")
+    if(XSG_TEST_MODELS)
+        add_executable(xsg-service-test tests/service.cpp)
+        target_link_libraries(xsg-service-test PRIVATE xsg-service)
+        add_test(NAME service COMMAND xsg-service-test "${engine}" "${XSG_TEST_MODELS}")
+        add_test(NAME model-matrix COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/model_matrix.py"
+            "${engine}" "${XSG_TEST_MODELS}")
+        set_tests_properties(service model-matrix PROPERTIES TIMEOUT 180)
+        if(XSG_BUILD_PLUGINS AND UNIX AND NOT APPLE)
+            add_executable(xsg-native-host tests/native_host.cpp)
+            target_link_libraries(xsg-native-host PRIVATE xsg-ui ${CMAKE_DL_LIBS})
+            set_target_properties(xsg-native-host PROPERTIES ENABLE_EXPORTS ON CXX_VISIBILITY_PRESET default)
+            add_test(NAME native-sdk-host COMMAND xsg-native-host $<TARGET_FILE:xsg-provider>
+                $<TARGET_FILE:xsg-diagnostic> "${engine}" "${XSG_TEST_MODELS}" "${CMAKE_CURRENT_SOURCE_DIR}/locales")
+            set_tests_properties(native-sdk-host PROPERTIES TIMEOUT 90)
+        endif()
+    endif()
+endif()
